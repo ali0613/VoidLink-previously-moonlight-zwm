@@ -1,0 +1,55 @@
+name: Build VoidLink IPA
+
+# 放到 fork 仓库的 .github/workflows/voidlink-build.yml
+# 触发：手动 Run workflow，或向 Integration 分支 push
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "Integration" ]
+
+jobs:
+  build:
+    name: Build VoidLink IPA
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build (unsigned archive)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project VoidLink.xcodeproj \
+            -scheme VoidLink \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath "$PWD/build/VoidLink.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED="NO" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            CODE_SIGNING_ALLOWED="NO" \
+            archive
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          mkdir -p build/IPA/Payload
+          cp -R build/VoidLink.xcarchive/Products/Applications/VoidLink.app build/IPA/Payload/
+          cd build/IPA
+          zip -qry ../VoidLink-unsigned.ipa Payload
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoidLink-unsigned-ipa
+          path: build/VoidLink-unsigned.ipa
+          if-no-files-found: error
