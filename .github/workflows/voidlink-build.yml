@@ -1,7 +1,7 @@
 name: Build VoidLink IPA
 
-# 放到 fork 仓库的 .github/workflows/voidlink-build.yml
-# 触发：手动 Run workflow，或向 Integration 分支 push
+# VoidLink Integration 分支需要 iOS 26 SDK（VTFrameProcessor / VTLowLatencyFrameInterpolation* / hidesSharedBackground）
+# 因此必须用 macOS 26 runner（Xcode 26），macos-15 的 Xcode 16.4 会编译失败。
 
 on:
   workflow_dispatch:
@@ -11,8 +11,8 @@ on:
 jobs:
   build:
     name: Build VoidLink IPA
-    runs-on: macos-15
-    timeout-minutes: 40
+    runs-on: macos-26
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -21,8 +21,21 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Select Xcode 26
+        run: |
+          set -e
+          cur=$(xcodebuild -version | head -1 | awk '{print $2}')
+          echo "default Xcode: $cur"
+          if [ "${cur%%.*}" -lt 26 ]; then
+            for app in $(ls -d /Applications/Xcode*.app | sort -rV); do
+              v=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null | head -1 | awk '{print $2}')
+              echo "found $app -> $v"
+              case "$v" in
+                26.*) sudo xcode-select -s "$app"; break ;;
+              esac
+            done
+          fi
+          xcodebuild -version
 
       - name: Build (unsigned archive)
         run: |
@@ -46,6 +59,7 @@ jobs:
           cp -R build/VoidLink.xcarchive/Products/Applications/VoidLink.app build/IPA/Payload/
           cd build/IPA
           zip -qry ../VoidLink-unsigned.ipa Payload
+          ls -lh ../VoidLink-unsigned.ipa
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
